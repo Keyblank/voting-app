@@ -88,6 +88,42 @@ export default function CreatePollForm() {
     setItems(newItems);
   };
 
+  // --- Paste list ---
+  const [showPaste, setShowPaste] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+
+  const parsePasteText = (text: string): ItemInput[] => {
+    return text
+      .split('\n')
+      .map((line) => {
+        // Rimuovi numero iniziale: "1.", "1)", "1 -", ecc.
+        let s = line.replace(/^\s*\d+[\.\)]\s*/, '').trim();
+        if (!s) return null;
+
+        // Rimuovi prefisso "Paese | " (Eurovision style)
+        s = s.replace(/^[^|]+\|\s*/, '');
+
+        // Cerca separatore per nome/sottotitolo: " - ", " – ", " . "
+        const sepMatch = s.match(/^(.+?)\s+[-–\.]\s+"?(.+?)"?\s*$/);
+        if (sepMatch) {
+          return { name: sepMatch[1].trim(), subtitle: sepMatch[2].trim() };
+        }
+
+        return { name: s.trim(), subtitle: '' };
+      })
+      .filter((item): item is ItemInput => item !== null && item.name.length > 0);
+  };
+
+  const parsedPreview = parsePasteText(pasteText);
+
+  const confirmPaste = () => {
+    if (parsedPreview.length === 0) return;
+    const existing = items.filter((i) => i.name.trim());
+    setItems([...existing, ...parsedPreview]);
+    setPasteText('');
+    setShowPaste(false);
+  };
+
   // --- Validation ---
   const canGoNext1 = title.trim() && creatorName.trim();
   const canGoNext2 = criteria.every((c) => c.name.trim()) && criteria.length >= 1;
@@ -329,6 +365,73 @@ export default function CreatePollForm() {
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             Aggiungi gli elementi che verranno votati (minimo 2)
           </p>
+
+          {/* Paste list */}
+          {!showPaste ? (
+            <button
+              onClick={() => setShowPaste(true)}
+              className="w-full rounded-xl py-2.5 text-sm font-medium transition-all hover:scale-[1.01]"
+              style={{ border: '2px dashed var(--border)', color: 'var(--text-muted)' }}
+            >
+              📋 Incolla lista
+            </button>
+          ) : (
+            <div className="rounded-xl p-4 space-y-3"
+              style={{ backgroundColor: 'var(--card-hover)', border: '1px solid var(--border)' }}>
+              <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+                Incolla la lista — un elemento per riga
+              </p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                Supporta formati: "Artista - Canzone", "1. Paese | Artista – Canzone", ecc.
+              </p>
+              <textarea
+                autoFocus
+                rows={6}
+                placeholder={'Achille Lauro - Incoscienti Giovani\nGiorgia - La mia voce\n1. Norvegia | Kyle Alessandro – Lighter'}
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                className="w-full rounded-lg px-3 py-2.5 text-sm outline-none resize-none font-mono"
+                style={inputStyle}
+              />
+              {pasteText.trim() && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                    Anteprima ({parsedPreview.length} elementi):
+                  </p>
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {parsedPreview.map((item, i) => (
+                      <div key={i} className="flex items-baseline gap-2 rounded-lg px-3 py-1.5"
+                        style={{ backgroundColor: 'var(--background)' }}>
+                        <span className="text-xs w-4 shrink-0" style={{ color: 'var(--text-muted)' }}>{i + 1}</span>
+                        <span className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>{item.name}</span>
+                        {item.subtitle && (
+                          <span className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>· {item.subtitle}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowPaste(false); setPasteText(''); }}
+                  className="flex-1 rounded-lg py-2 text-sm font-medium"
+                  style={{ backgroundColor: 'var(--background)', color: 'var(--text-muted)' }}
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={confirmPaste}
+                  disabled={parsedPreview.length === 0}
+                  className="flex-1 rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-40"
+                  style={{ backgroundColor: 'var(--primary)' }}
+                >
+                  Aggiungi {parsedPreview.length > 0 ? `${parsedPreview.length} elementi` : ''}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
             {items.map((item, i) => (
               <div
