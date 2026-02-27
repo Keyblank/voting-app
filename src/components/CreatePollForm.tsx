@@ -100,9 +100,6 @@ export default function CreatePollForm() {
         let s = line.replace(/^\s*\d+[\.\)]\s*/, '').trim();
         if (!s) return null;
 
-        // Rimuovi prefisso "Paese | " (Eurovision style)
-        s = s.replace(/^[^|]+\|\s*/, '');
-
         // Cerca separatore per nome/sottotitolo: " - ", " – ", " . "
         const sepMatch = s.match(/^(.+?)\s+[-–\.]\s+"?(.+?)"?\s*$/);
         if (sepMatch) {
