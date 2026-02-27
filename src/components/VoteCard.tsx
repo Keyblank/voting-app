@@ -124,6 +124,7 @@ export default function VoteCard({ item, criteria, isVoted, getVoteValue, onVote
                 <VoteSlider
                   key={criterion.id}
                   criterionName={criterion.name}
+                  criterionEmoji={criterion.emoji}
                   minValue={criterion.min_value}
                   maxValue={criterion.max_value}
                   currentValue={localValues[criterion.id] ?? criterion.min_value}

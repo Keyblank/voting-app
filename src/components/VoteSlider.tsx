@@ -6,6 +6,7 @@ type SaveStatus = 'saving' | 'saved' | 'error' | null;
 
 interface Props {
   criterionName: string;
+  criterionEmoji?: string | null;
   minValue: number;
   maxValue: number;
   saveStatus: SaveStatus;
@@ -15,6 +16,7 @@ interface Props {
 
 export default function VoteSlider({
   criterionName,
+  criterionEmoji,
   minValue,
   maxValue,
   saveStatus,
@@ -33,7 +35,8 @@ export default function VoteSlider({
     <div className="space-y-2.5">
       {/* Header: nome criterio + status salvataggio */}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+        <span className="text-sm font-medium flex items-center gap-1.5" style={{ color: 'var(--text)' }}>
+          {criterionEmoji && <span className="text-base">{criterionEmoji}</span>}
           {criterionName}
         </span>
         <AnimatePresence mode="wait">
@@ -76,8 +79,11 @@ export default function VoteSlider({
                 key={v}
                 onClick={() => onValueChange(v)}
                 whileTap={{ scale: 0.85 }}
-                className="rounded-lg py-3 text-sm font-bold"
+                className="flex items-center justify-center text-sm font-bold"
                 style={{
+                  width: '100%',
+                  aspectRatio: '1',
+                  borderRadius: '50%',
                   backgroundColor: isSelected
                     ? `hsl(${vHue}, 65%, 38%)`
                     : 'var(--card-hover)',

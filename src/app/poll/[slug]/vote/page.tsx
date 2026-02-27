@@ -21,6 +21,7 @@ export default function VotePage() {
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [error, setError] = useState('');
   const [modalDismissed, setModalDismissed] = useState(false);
+  const [instructionsDismissed, setInstructionsDismissed] = useState(false);
 
   const {
     voterId,
@@ -169,6 +170,66 @@ export default function VotePage() {
           >
             📊 Vedi Risultati
           </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Schermata istruzioni (solo se ci sono istruzioni e il voter è registrato)
+  const showInstructions =
+    poll.instructions &&
+    !needsNickname &&
+    !instructionsDismissed;
+
+  if (showInstructions) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 py-12"
+        style={{ backgroundColor: 'var(--background)' }}>
+        <div className="w-full max-w-md space-y-6">
+          <div className="text-center">
+            <p className="text-4xl mb-3">📋</p>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>{poll.title}</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Istruzioni</p>
+          </div>
+          <div className="rounded-xl p-5" style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)' }}>
+            <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--text)' }}>
+              {poll.instructions}
+            </p>
+          </div>
+          {criteria.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                Criteri di valutazione
+              </p>
+              {criteria.map((c) => (
+                <div key={c.id} className="flex items-center justify-between rounded-lg px-4 py-2.5"
+                  style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)' }}>
+                  <span className="text-sm font-medium flex items-center gap-2" style={{ color: 'var(--text)' }}>
+                    {c.emoji && <span>{c.emoji}</span>}
+                    {c.name}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {c.exclude_from_total && (
+                      <span className="text-xs rounded-full px-2 py-0.5"
+                        style={{ backgroundColor: 'rgba(190,24,93,0.15)', color: '#f472b6' }}>
+                        separata
+                      </span>
+                    )}
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {c.min_value}–{c.max_value}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <button
+            onClick={() => setInstructionsDismissed(true)}
+            className="w-full rounded-xl py-4 text-lg font-bold text-white transition-all hover:scale-[1.02]"
+            style={{ backgroundColor: 'var(--primary)' }}
+          >
+            🗳️ Inizia a votare
+          </button>
         </div>
       </div>
     );

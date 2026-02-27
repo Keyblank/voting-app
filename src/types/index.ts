@@ -6,6 +6,7 @@ export interface Poll {
   creator_name: string;
   is_active: boolean;
   created_at: string;
+  instructions: string | null;
 }
 
 export interface Criterion {
@@ -15,6 +16,8 @@ export interface Criterion {
   min_value: number;
   max_value: number;
   sort_order: number;
+  emoji: string | null;
+  exclude_from_total: boolean;
 }
 
 export interface Item {

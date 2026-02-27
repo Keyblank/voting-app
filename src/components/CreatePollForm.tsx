@@ -9,7 +9,11 @@ interface CriterionInput {
   name: string;
   minValue: number;
   maxValue: number;
+  emoji: string;
+  excludeFromTotal: boolean;
 }
+
+const EMOJI_OPTIONS = ['🎵','🎤','💃','🎨','❤️','⭐','🔥','👑','🎭','🏆','🎯','✨','🌟','💫','🎶','🥁','🎸','🎹','🎺','🎻','😍','🤩','👏','💪','🧠','👀','😮','🤔','💡','🎉'];
 
 interface ItemInput {
   name: string;
@@ -28,10 +32,11 @@ export default function CreatePollForm() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [creatorName, setCreatorName] = useState('');
+  const [instructions, setInstructions] = useState('');
 
   // Step 2
   const [criteria, setCriteria] = useState<CriterionInput[]>([
-    { name: '', minValue: 1, maxValue: 10 },
+    { name: '', minValue: 1, maxValue: 10, emoji: '', excludeFromTotal: false },
   ]);
 
   // Step 3
@@ -52,6 +57,7 @@ export default function CreatePollForm() {
         if (state.title) setTitle(state.title);
         if (state.description) setDescription(state.description);
         if (state.creatorName) setCreatorName(state.creatorName);
+        if (state.instructions) setInstructions(state.instructions);
         if (state.criteria?.length) setCriteria(state.criteria);
         if (state.items?.length) setItems(state.items);
       }
@@ -63,16 +69,16 @@ export default function CreatePollForm() {
     if (!hasRestoredRef.current) return;
     sessionStorage.setItem(
       FORM_KEY,
-      JSON.stringify({ step, title, description, creatorName, criteria, items })
+      JSON.stringify({ step, title, description, creatorName, instructions, criteria, items })
     );
   }, [step, title, description, creatorName, criteria, items]);
 
   // --- Step 2 helpers ---
   const addCriterion = () =>
-    setCriteria((prev) => [...prev, { name: '', minValue: 1, maxValue: 10 }]);
+    setCriteria((prev) => [...prev, { name: '', minValue: 1, maxValue: 10, emoji: '', excludeFromTotal: false }]);
   const removeCriterion = (i: number) =>
     setCriteria((prev) => prev.filter((_, idx) => idx !== i));
-  const updateCriterion = (i: number, field: keyof CriterionInput, value: string | number) =>
+  const updateCriterion = (i: number, field: keyof CriterionInput, value: string | number | boolean) =>
     setCriteria((prev) => prev.map((c, idx) => (idx === i ? { ...c, [field]: value } : c)));
 
   // --- Step 3 helpers ---
@@ -87,6 +93,9 @@ export default function CreatePollForm() {
     [newItems[i], newItems[j]] = [newItems[j], newItems[i]];
     setItems(newItems);
   };
+
+  // --- Emoji picker ---
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState<number | null>(null);
 
   // --- Paste list ---
   const [showPaste, setShowPaste] = useState(false);
@@ -157,6 +166,7 @@ export default function CreatePollForm() {
           description: description.trim() || null,
           slug,
           creator_name: creatorName.trim(),
+          instructions: instructions.trim() || null,
         })
         .select()
         .single();
@@ -170,6 +180,8 @@ export default function CreatePollForm() {
           min_value: c.minValue,
           max_value: c.maxValue,
           sort_order: i,
+          emoji: c.emoji || null,
+          exclude_from_total: c.excludeFromTotal,
         }))
       );
 
@@ -276,6 +288,19 @@ export default function CreatePollForm() {
               style={inputStyle}
             />
           </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
+              Istruzioni per i votanti (opzionale)
+            </label>
+            <textarea
+              placeholder="es. Valuta ogni esibizione da 1 a 10. La categoria Spupazzabile non conta nel totale!"
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              rows={3}
+              className={inputClass + ' resize-none'}
+              style={inputStyle}
+            />
+          </div>
         </div>
       )}
 
@@ -296,6 +321,34 @@ export default function CreatePollForm() {
                 style={{ backgroundColor: 'var(--card-hover)', border: '1px solid var(--border)' }}
               >
                 <div className="flex items-center gap-2">
+                  {/* Emoji button */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setEmojiPickerOpen(emojiPickerOpen === i ? null : i)}
+                      className="rounded-lg px-2 py-2 text-xl transition-colors"
+                      style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)', minWidth: '2.5rem' }}
+                      title="Scegli emoji"
+                    >
+                      {c.emoji || '＋'}
+                    </button>
+                    {emojiPickerOpen === i && (
+                      <div className="absolute left-0 top-10 z-20 rounded-xl p-2 shadow-xl grid grid-cols-5 gap-1"
+                        style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)', width: '180px' }}>
+                        <button
+                          onClick={() => { updateCriterion(i, 'emoji', ''); setEmojiPickerOpen(null); }}
+                          className="rounded p-1 text-xs hover:bg-white/10"
+                          style={{ color: 'var(--text-muted)' }}
+                        >✕</button>
+                        {EMOJI_OPTIONS.map((e) => (
+                          <button
+                            key={e}
+                            onClick={() => { updateCriterion(i, 'emoji', e); setEmojiPickerOpen(null); }}
+                            className="rounded p-1 text-lg hover:bg-white/10 transition-colors"
+                          >{e}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <input
                     type="text"
                     placeholder="es. Canzone, Performance..."
@@ -340,6 +393,18 @@ export default function CreatePollForm() {
                     />
                   </div>
                 </div>
+                {/* Exclude from total */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={c.excludeFromTotal}
+                    onChange={(e) => updateCriterion(i, 'excludeFromTotal', e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    Non conta nel punteggio totale (classifica separata)
+                  </span>
+                </label>
               </div>
             ))}
           </div>
@@ -510,7 +575,10 @@ export default function CreatePollForm() {
               {criteria.map((c, i) => (
                 <div key={i} className="flex items-center justify-between rounded-lg px-3 py-2"
                   style={{ backgroundColor: 'var(--card-hover)' }}>
-                  <span style={{ color: 'var(--text)' }}>{c.name}</span>
+                  <span style={{ color: 'var(--text)' }}>
+                    {c.emoji && <span className="mr-1">{c.emoji}</span>}{c.name}
+                    {c.excludeFromTotal && <span className="ml-2 text-xs" style={{ color: 'var(--text-muted)' }}>(separata)</span>}
+                  </span>
                   <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
                     {c.minValue} – {c.maxValue}
                   </span>

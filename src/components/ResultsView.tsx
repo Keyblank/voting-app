@@ -18,6 +18,8 @@ function calculateLeaderboard(
   items: Item[],
   criteria: Criterion[]
 ): ItemScore[] {
+  const includedCriteria = criteria.filter((c) => !c.exclude_from_total);
+
   return items
     .map((item) => {
       const itemVotes = votes.filter((v) => v.item_id === item.id);
@@ -35,9 +37,11 @@ function calculateLeaderboard(
         };
       });
 
+      // Solo i criteri che concorrono al totale
+      const includedScores = byCriterion.filter((c) => !c.criterion.exclude_from_total);
       const totalAvg =
-        byCriterion.length > 0
-          ? byCriterion.reduce((sum, c) => sum + c.avg, 0) / byCriterion.length
+        includedScores.length > 0
+          ? includedScores.reduce((sum, c) => sum + c.avg, 0) / includedScores.length
           : 0;
 
       return {
@@ -49,6 +53,7 @@ function calculateLeaderboard(
     })
     .sort((a, b) => b.totalAvg - a.totalAvg);
 }
+
 
 type TabType = 'general' | string;
 
@@ -174,13 +179,19 @@ export default function ResultsView({ poll, criteria, items }: Props) {
             <button
               key={c.id}
               onClick={() => setActiveTab(c.id)}
-              className="shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-all"
+              className="shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-all flex items-center gap-1.5"
               style={{
-                backgroundColor: activeTab === c.id ? 'var(--secondary)' : 'var(--card)',
+                backgroundColor: activeTab === c.id
+                  ? (c.exclude_from_total ? '#be185d' : 'var(--secondary)')
+                  : 'var(--card)',
                 color: activeTab === c.id ? '#fff' : 'var(--text-muted)',
               }}
             >
+              {c.emoji && <span>{c.emoji}</span>}
               {c.name}
+              {c.exclude_from_total && (
+                <span className="text-xs opacity-75">★</span>
+              )}
             </button>
           ))}
         </div>
