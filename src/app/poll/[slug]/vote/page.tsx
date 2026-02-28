@@ -267,6 +267,27 @@ export default function VotePage() {
           </div>
         </div>
 
+        {/* Banner completamento */}
+        {votedCount === items.length && items.length > 0 && (
+          <div className="mx-auto max-w-xl px-4 pt-4">
+            <div
+              className="rounded-xl px-5 py-4 text-center"
+              style={{
+                backgroundColor: 'rgba(16,185,129,0.12)',
+                border: '1px solid rgba(16,185,129,0.35)',
+              }}
+            >
+              <p className="text-2xl mb-1">🎉</p>
+              <p className="font-bold" style={{ color: 'var(--success)' }}>
+                Hai votato tutti i {items.length} {items.length === 1 ? 'elemento' : 'elementi'}!
+              </p>
+              <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                Puoi cambiare i voti in qualsiasi momento
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Vote cards */}
         <div className="mx-auto max-w-xl px-4 pt-4 space-y-3">
           {items.map((item) => (

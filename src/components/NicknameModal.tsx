@@ -152,13 +152,13 @@ export default function NicknameModal({
                 Il tuo codice personale
               </h2>
               <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-                Salvalo! Usalo per votare da un altro dispositivo e recuperare i tuoi voti.
+                Serve per continuare a votare da un altro dispositivo o browser.
               </p>
             </div>
 
             <button
               onClick={copyCode}
-              className="mb-5 w-full rounded-xl py-4 text-center transition-all hover:scale-[1.02]"
+              className="mb-3 w-full rounded-xl py-4 text-center transition-all hover:scale-[1.02]"
               style={{
                 backgroundColor: codeCopied ? 'rgba(16,185,129,0.15)' : 'var(--card-hover)',
                 border: `2px solid ${codeCopied ? 'var(--success)' : 'var(--border)'}`,
@@ -174,6 +174,18 @@ export default function NicknameModal({
                 {codeCopied ? '✓ Copiato!' : 'Tocca per copiare'}
               </span>
             </button>
+
+            {/* Warning prominente */}
+            <div
+              className="mb-4 rounded-xl px-4 py-3 text-sm text-center"
+              style={{
+                backgroundColor: 'rgba(245,158,11,0.12)',
+                border: '1px solid rgba(245,158,11,0.35)',
+                color: 'var(--warning)',
+              }}
+            >
+              ⚠ Annotalo ora — non verrà mostrato di nuovo
+            </div>
 
             <button
               onClick={onClose}

@@ -1,13 +1,17 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase-client';
 import type { Vote } from '@/types';
+
+const POLL_INTERVAL_MS = 30_000;
 
 export function useRealtimeVotes(pollId: string) {
   const [votes, setVotes] = useState<Vote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
   const [retryTrigger, setRetryTrigger] = useState(0);
+  const isConnectedRef = useRef(false);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const fetchVotes = useCallback(async () => {
     const { data } = await supabase
@@ -24,6 +28,27 @@ export function useRealtimeVotes(pollId: string) {
     setIsLoading(true);
     setRetryTrigger((v) => v + 1);
   }, []);
+
+  // Polling fallback: si attiva solo quando isConnected === false
+  useEffect(() => {
+    isConnectedRef.current = isConnected;
+
+    if (!isConnected && !isLoading) {
+      const schedule = () => {
+        pollTimerRef.current = setTimeout(async () => {
+          if (!isConnectedRef.current) {
+            await fetchVotes();
+            schedule();
+          }
+        }, POLL_INTERVAL_MS);
+      };
+      schedule();
+    }
+
+    return () => {
+      clearTimeout(pollTimerRef.current);
+    };
+  }, [isConnected, isLoading, fetchVotes]);
 
   useEffect(() => {
     fetchVotes();
