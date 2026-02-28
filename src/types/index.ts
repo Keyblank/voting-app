@@ -7,6 +7,15 @@ export interface Poll {
   is_active: boolean;
   created_at: string;
   instructions: string | null;
+  poll_type: 'rating' | 'single_choice' | 'multi_choice';
+  max_choices: number;
+}
+
+export interface Choice {
+  id: string;
+  poll_id: string;
+  name: string;
+  sort_order: number;
 }
 
 export interface Criterion {
@@ -38,6 +47,7 @@ export interface Vote {
   value: number;
   created_at: string;
   updated_at: string;
+  choice_id: string | null;
 }
 
 export interface Voter {

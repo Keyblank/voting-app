@@ -5,12 +5,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useRealtimeVotes } from '@/hooks/useRealtimeVotes';
 import Leaderboard from './Leaderboard';
 import CriterionRanking from './CriterionRanking';
-import type { Poll, Criterion, Item, ItemScore, Vote } from '@/types';
+import ChoiceResultsView from './ChoiceResultsView';
+import type { Poll, Criterion, Item, ItemScore, Vote, Choice } from '@/types';
 
 interface Props {
   poll: Poll;
   criteria: Criterion[];
   items: Item[];
+  choices?: Choice[];
 }
 
 function calculateLeaderboard(
@@ -57,8 +59,23 @@ function calculateLeaderboard(
 
 type TabType = 'general' | string;
 
-export default function ResultsView({ poll, criteria, items }: Props) {
+export default function ResultsView({ poll, criteria, items, choices = [] }: Props) {
   const { votes, isLoading, isConnected, reconnect } = useRealtimeVotes(poll.id);
+
+  // Delegare a ChoiceResultsView per sondaggi non-rating
+  if (poll.poll_type === 'single_choice' || poll.poll_type === 'multi_choice') {
+    return (
+      <ChoiceResultsView
+        poll={poll}
+        items={items}
+        choices={choices}
+        votes={votes}
+        isLoading={isLoading}
+        isConnected={isConnected}
+        reconnect={reconnect}
+      />
+    );
+  }
   const [activeTab, setActiveTab] = useState<TabType>('general');
 
   const leaderboard = useMemo(

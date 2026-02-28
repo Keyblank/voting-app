@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase-client';
@@ -8,7 +8,8 @@ import { useVoter } from '@/hooks/useVoter';
 import NicknameModal from '@/components/NicknameModal';
 import VoteCard from '@/components/VoteCard';
 import ProgressBar from '@/components/ProgressBar';
-import type { Poll, Criterion, Item } from '@/types';
+import ChoiceVotePage from '@/components/ChoiceVotePage';
+import type { Poll, Criterion, Item, Choice } from '@/types';
 
 export default function VotePage() {
   const params = useParams();
@@ -17,6 +18,9 @@ export default function VotePage() {
   const [poll, setPoll] = useState<Poll | null>(null);
   const [criteria, setCriteria] = useState<Criterion[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const [choices, setChoices] = useState<Choice[]>([]);
+  // For rating: votes[itemId][criterionId] = value
+  // For choice: votes[itemId][choiceId] = 1
   const [votes, setVotes] = useState<Record<string, Record<string, number>>>({});
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [error, setError] = useState('');
@@ -53,14 +57,16 @@ export default function VotePage() {
         return;
       }
 
-      const [criteriaRes, itemsRes] = await Promise.all([
+      const [criteriaRes, itemsRes, choicesRes] = await Promise.all([
         supabase.from('criteria').select('*').eq('poll_id', pollData.id).order('sort_order'),
         supabase.from('items').select('*').eq('poll_id', pollData.id).order('sort_order'),
+        supabase.from('choices').select('*').eq('poll_id', pollData.id).order('sort_order'),
       ]);
 
       setPoll(pollData);
       setCriteria(criteriaRes.data || []);
       setItems(itemsRes.data || []);
+      setChoices(choicesRes.data || []);
       setIsLoadingData(false);
     }
     fetchData();
@@ -81,7 +87,15 @@ export default function VotePage() {
         const voteMap: Record<string, Record<string, number>> = {};
         for (const v of data) {
           if (!voteMap[v.item_id]) voteMap[v.item_id] = {};
-          voteMap[v.item_id][v.criterion_id] = v.value;
+          if (poll!.poll_type === 'rating') {
+            // Rating: key = criterion_id
+            voteMap[v.item_id][v.criterion_id] = v.value;
+          } else {
+            // Choice: key = choice_id
+            if (v.choice_id) {
+              voteMap[v.item_id][v.choice_id] = v.value;
+            }
+          }
         }
         setVotes(voteMap);
       }
@@ -116,15 +130,85 @@ export default function VotePage() {
     [voterId, voterName, poll]
   );
 
+  const handleChoiceVote = useCallback(
+    async (itemId: string, choiceId: string, selected: boolean): Promise<boolean> => {
+      if (!voterId || !voterName || !poll) return false;
+
+      if (!selected) {
+        // Deseleziona: rimuovi dalla mappa locale e cancella dal DB
+        setVotes((prev) => {
+          const itemVotes = { ...(prev[itemId] || {}) };
+          delete itemVotes[choiceId];
+          return { ...prev, [itemId]: itemVotes };
+        });
+
+        const { error } = await supabase
+          .from('votes')
+          .delete()
+          .eq('poll_id', poll.id)
+          .eq('item_id', itemId)
+          .eq('choice_id', choiceId)
+          .eq('voter_id', voterId);
+        return !error;
+      }
+
+      // Seleziona: per single_choice cancella prima i voti precedenti su questo item
+      if (poll.poll_type === 'single_choice') {
+        setVotes((prev) => ({ ...prev, [itemId]: { [choiceId]: 1 } }));
+        await supabase
+          .from('votes')
+          .delete()
+          .eq('poll_id', poll.id)
+          .eq('item_id', itemId)
+          .eq('voter_id', voterId);
+      } else {
+        setVotes((prev) => ({
+          ...prev,
+          [itemId]: { ...(prev[itemId] || {}), [choiceId]: 1 },
+        }));
+      }
+
+      const { error } = await supabase.from('votes').upsert(
+        {
+          poll_id: poll.id,
+          item_id: itemId,
+          criterion_id: '',
+          choice_id: choiceId,
+          voter_id: voterId,
+          voter_name: voterName,
+          value: 1,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'item_id,choice_id,voter_id' }
+      );
+      return !error;
+    },
+    [voterId, voterName, poll]
+  );
+
   const getVoteValue = (itemId: string, criterionId: string): number => {
     const criterion = criteria.find((c) => c.id === criterionId);
     return votes[itemId]?.[criterionId] ?? criterion?.min_value ?? 1;
   };
 
   const isItemVoted = (itemId: string): boolean => {
+    if (poll?.poll_type !== 'rating') {
+      // Per choice: almeno una scelta fatta
+      return votes[itemId] !== undefined && Object.keys(votes[itemId]).length > 0;
+    }
     if (criteria.length === 0) return false;
     return criteria.every((c) => votes[itemId]?.[c.id] !== undefined);
   };
+
+  // Per choice: mappa item_id → choice_id[]
+  const selectedChoices = useMemo<Record<string, string[]>>(() => {
+    if (poll?.poll_type === 'rating') return {};
+    const map: Record<string, string[]> = {};
+    for (const itemId of Object.keys(votes)) {
+      map[itemId] = Object.keys(votes[itemId]);
+    }
+    return map;
+  }, [votes, poll]);
 
   const votedCount = items.filter((item) => isItemVoted(item.id)).length;
 
@@ -232,6 +316,35 @@ export default function VotePage() {
           </button>
         </div>
       </div>
+    );
+  }
+
+  // Sondaggi choice: delegare a ChoiceVotePage
+  if (poll.poll_type === 'single_choice' || poll.poll_type === 'multi_choice') {
+    return (
+      <>
+        {needsNickname && !modalDismissed && (
+          <NicknameModal
+            pollTitle={poll.title}
+            pollId={poll.id}
+            onRegister={(name) => register(name, poll.id)}
+            onRecover={recoverByCode}
+            recoveryCode={recoveryCode}
+            onClose={() => setModalDismissed(true)}
+          />
+        )}
+        <ChoiceVotePage
+          poll={poll}
+          items={items}
+          choices={choices}
+          slug={slug}
+          voterId={voterId}
+          voterName={voterName}
+          selectedChoices={selectedChoices}
+          votedCount={votedCount}
+          onVote={handleChoiceVote}
+        />
+      </>
     );
   }
 

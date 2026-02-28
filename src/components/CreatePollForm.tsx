@@ -5,12 +5,18 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase-client';
 import { generateSlug } from '@/lib/utils';
 
+type PollType = 'rating' | 'single_choice' | 'multi_choice';
+
 interface CriterionInput {
   name: string;
   minValue: number;
   maxValue: number;
   emoji: string;
   excludeFromTotal: boolean;
+}
+
+interface ChoiceInput {
+  name: string;
 }
 
 const EMOJI_OPTIONS = ['🎵','🎤','💃','🎨','❤️','⭐','🔥','👑','🎭','🏆','🎯','✨','🌟','💫','🎶','🥁','🎸','🎹','🎺','🎻','😍','🤩','👏','💪','🧠','👀','😮','🤔','💡','🎉'];
@@ -21,6 +27,12 @@ interface ItemInput {
 }
 
 const FORM_KEY = 'voteapp_create_form';
+
+const POLL_TYPE_OPTIONS: { value: PollType; label: string; icon: string; desc: string }[] = [
+  { value: 'rating', label: 'Valutazione', icon: '⭐', desc: 'Ogni elemento viene valutato su criteri numerici (es. 1–10)' },
+  { value: 'single_choice', label: 'Scelta singola', icon: '🔘', desc: 'Per ogni elemento si sceglie una sola opzione' },
+  { value: 'multi_choice', label: 'Scelta multipla', icon: '☑️', desc: 'Per ogni elemento si scelgono più opzioni (fino a N)' },
+];
 
 export default function CreatePollForm() {
   const router = useRouter();
@@ -33,10 +45,18 @@ export default function CreatePollForm() {
   const [description, setDescription] = useState('');
   const [creatorName, setCreatorName] = useState('');
   const [instructions, setInstructions] = useState('');
+  const [pollType, setPollType] = useState<PollType>('rating');
+  const [maxChoices, setMaxChoices] = useState(2);
 
-  // Step 2
+  // Step 2 — rating
   const [criteria, setCriteria] = useState<CriterionInput[]>([
     { name: '', minValue: 1, maxValue: 10, emoji: '', excludeFromTotal: false },
+  ]);
+
+  // Step 2 — single/multi choice
+  const [choices, setChoices] = useState<ChoiceInput[]>([
+    { name: '' },
+    { name: '' },
   ]);
 
   // Step 3
@@ -58,7 +78,10 @@ export default function CreatePollForm() {
         if (state.description) setDescription(state.description);
         if (state.creatorName) setCreatorName(state.creatorName);
         if (state.instructions) setInstructions(state.instructions);
+        if (state.pollType) setPollType(state.pollType);
+        if (state.maxChoices) setMaxChoices(state.maxChoices);
         if (state.criteria?.length) setCriteria(state.criteria);
+        if (state.choices?.length) setChoices(state.choices);
         if (state.items?.length) setItems(state.items);
       }
     } catch { /* ignore */ }
@@ -69,17 +92,32 @@ export default function CreatePollForm() {
     if (!hasRestoredRef.current) return;
     sessionStorage.setItem(
       FORM_KEY,
-      JSON.stringify({ step, title, description, creatorName, instructions, criteria, items })
+      JSON.stringify({ step, title, description, creatorName, instructions, pollType, maxChoices, criteria, choices, items })
     );
-  }, [step, title, description, creatorName, criteria, items]);
+  }, [step, title, description, creatorName, instructions, pollType, maxChoices, criteria, choices, items]);
 
-  // --- Step 2 helpers ---
+  // --- Step 2 helpers (rating) ---
   const addCriterion = () =>
     setCriteria((prev) => [...prev, { name: '', minValue: 1, maxValue: 10, emoji: '', excludeFromTotal: false }]);
   const removeCriterion = (i: number) =>
     setCriteria((prev) => prev.filter((_, idx) => idx !== i));
   const updateCriterion = (i: number, field: keyof CriterionInput, value: string | number | boolean) =>
     setCriteria((prev) => prev.map((c, idx) => (idx === i ? { ...c, [field]: value } : c)));
+
+  // --- Step 2 helpers (choice) ---
+  const addChoice = () => setChoices((prev) => [...prev, { name: '' }]);
+  const removeChoice = (i: number) => setChoices((prev) => prev.filter((_, idx) => idx !== i));
+  const updateChoice = (i: number, value: string) =>
+    setChoices((prev) => prev.map((c, idx) => (idx === i ? { name: value } : c)));
+
+  const parsePasteChoices = (text: string): ChoiceInput[] =>
+    text
+      .split('\n')
+      .map((line) => {
+        let s = line.replace(/^\s*\d+[\.\)]\s*/, '').trim();
+        return s ? { name: s } : null;
+      })
+      .filter((c): c is ChoiceInput => c !== null && c.name.length > 0);
 
   // --- Step 3 helpers ---
   const addItem = () => setItems((prev) => [...prev, { name: '', subtitle: '' }]);
@@ -97,7 +135,7 @@ export default function CreatePollForm() {
   // --- Emoji picker ---
   const [emojiPickerOpen, setEmojiPickerOpen] = useState<number | null>(null);
 
-  // --- Paste list ---
+  // --- Paste list (items) ---
   const [showPaste, setShowPaste] = useState(false);
   const [pasteText, setPasteText] = useState('');
 
@@ -105,16 +143,12 @@ export default function CreatePollForm() {
     return text
       .split('\n')
       .map((line) => {
-        // Rimuovi numero iniziale: "1.", "1)", "1 -", ecc.
         let s = line.replace(/^\s*\d+[\.\)]\s*/, '').trim();
         if (!s) return null;
-
-        // Cerca separatore per nome/sottotitolo: " - ", " – ", " . "
         const sepMatch = s.match(/^(.+?)\s+[-–\.]\s+"?(.+?)"?\s*$/);
         if (sepMatch) {
           return { name: sepMatch[1].trim(), subtitle: sepMatch[2].trim() };
         }
-
         return { name: s.trim(), subtitle: '' };
       })
       .filter((item): item is ItemInput => item !== null && item.name.length > 0);
@@ -130,9 +164,23 @@ export default function CreatePollForm() {
     setShowPaste(false);
   };
 
+  // --- Paste list (choices) ---
+  const [showChoicePaste, setShowChoicePaste] = useState(false);
+  const [choicePasteText, setChoicePasteText] = useState('');
+  const parsedChoicePreview = parsePasteChoices(choicePasteText);
+  const confirmChoicePaste = () => {
+    if (parsedChoicePreview.length === 0) return;
+    const existing = choices.filter((c) => c.name.trim());
+    setChoices([...existing, ...parsedChoicePreview]);
+    setChoicePasteText('');
+    setShowChoicePaste(false);
+  };
+
   // --- Validation ---
   const canGoNext1 = title.trim() && creatorName.trim();
-  const canGoNext2 = criteria.every((c) => c.name.trim()) && criteria.length >= 1;
+  const canGoNext2 = pollType === 'rating'
+    ? criteria.every((c) => c.name.trim()) && criteria.length >= 1
+    : choices.every((c) => c.name.trim()) && choices.length >= 2;
   const canGoNext3 =
     items.filter((item) => item.name.trim()).length >= 2 &&
     items.every((item) => item.name.trim());
@@ -145,12 +193,18 @@ export default function CreatePollForm() {
       ? 'Inserisci il titolo del sondaggio'
       : 'Inserisci il tuo nome'
     : '';
-  const hint2 = !canGoNext2 ? 'Assegna un nome a tutti i criteri' : '';
+  const hint2 = !canGoNext2
+    ? pollType === 'rating'
+      ? 'Assegna un nome a tutti i criteri'
+      : 'Assegna un nome a tutte le opzioni (minimo 2)'
+    : '';
   const hint3 = !canGoNext3
     ? items.filter((i) => i.name.trim()).length < 2
       ? 'Aggiungi almeno 2 elementi con un nome'
       : 'Completa il nome di tutti gli elementi'
     : '';
+
+  const step2Label = pollType === 'rating' ? 'Criteri' : 'Opzioni';
 
   // --- Submit ---
   async function handleSubmit() {
@@ -167,23 +221,35 @@ export default function CreatePollForm() {
           slug,
           creator_name: creatorName.trim(),
           instructions: instructions.trim() || null,
+          poll_type: pollType,
+          max_choices: pollType === 'multi_choice' ? maxChoices : 1,
         })
         .select()
         .single();
 
       if (pollError || !poll) throw new Error(pollError?.message || 'Errore creazione sondaggio');
 
-      await supabase.from('criteria').insert(
-        criteria.map((c, i) => ({
-          poll_id: poll.id,
-          name: c.name.trim(),
-          min_value: c.minValue,
-          max_value: c.maxValue,
-          sort_order: i,
-          emoji: c.emoji || null,
-          exclude_from_total: c.excludeFromTotal,
-        }))
-      );
+      if (pollType === 'rating') {
+        await supabase.from('criteria').insert(
+          criteria.map((c, i) => ({
+            poll_id: poll.id,
+            name: c.name.trim(),
+            min_value: c.minValue,
+            max_value: c.maxValue,
+            sort_order: i,
+            emoji: c.emoji || null,
+            exclude_from_total: c.excludeFromTotal,
+          }))
+        );
+      } else {
+        await supabase.from('choices').insert(
+          choices.map((c, i) => ({
+            poll_id: poll.id,
+            name: c.name.trim(),
+            sort_order: i,
+          }))
+        );
+      }
 
       await supabase.from('items').insert(
         items.map((item, i) => ({
@@ -194,7 +260,6 @@ export default function CreatePollForm() {
         }))
       );
 
-      // Mark this browser as the creator
       localStorage.setItem(`voteapp_${slug}_creator`, 'true');
       sessionStorage.removeItem(FORM_KEY);
 
@@ -205,8 +270,7 @@ export default function CreatePollForm() {
     }
   }
 
-  const inputClass =
-    'w-full rounded-lg px-4 py-3 text-sm outline-none transition-all';
+  const inputClass = 'w-full rounded-lg px-4 py-3 text-sm outline-none transition-all';
   const inputStyle = {
     backgroundColor: 'var(--background)',
     color: 'var(--text)',
@@ -239,7 +303,7 @@ export default function CreatePollForm() {
         </div>
         <div className="mt-2 text-xs" style={{ color: 'var(--text-muted)' }}>
           Step {step} di 4 —{' '}
-          {['Informazioni', 'Criteri', 'Elementi', 'Conferma'][step - 1]}
+          {['Informazioni', step2Label, 'Elementi', 'Conferma'][step - 1]}
         </div>
       </div>
 
@@ -249,6 +313,59 @@ export default function CreatePollForm() {
           <h2 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
             Informazioni generali
           </h2>
+
+          {/* Tipo sondaggio */}
+          <div>
+            <label className="mb-2 block text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
+              Tipo di sondaggio
+            </label>
+            <div className="space-y-2">
+              {POLL_TYPE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setPollType(opt.value)}
+                  className="w-full rounded-xl px-4 py-3 text-left transition-all"
+                  style={{
+                    backgroundColor: pollType === opt.value ? 'rgba(99,102,241,0.12)' : 'var(--card-hover)',
+                    border: `2px solid ${pollType === opt.value ? 'var(--primary)' : 'var(--border)'}`,
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">{opt.icon}</span>
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: pollType === opt.value ? 'var(--primary-light)' : 'var(--text)' }}>
+                        {opt.label}
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{opt.desc}</p>
+                    </div>
+                    {pollType === opt.value && (
+                      <span className="ml-auto text-sm" style={{ color: 'var(--primary-light)' }}>✓</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Max choices (solo multi_choice) */}
+          {pollType === 'multi_choice' && (
+            <div>
+              <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
+                Numero massimo di scelte per elemento
+              </label>
+              <input
+                type="number"
+                min={2}
+                max={20}
+                value={maxChoices}
+                onChange={(e) => setMaxChoices(Math.max(2, parseInt(e.target.value) || 2))}
+                className={inputClass}
+                style={inputStyle}
+              />
+            </div>
+          )}
+
           <div>
             <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
               Titolo *
@@ -293,7 +410,7 @@ export default function CreatePollForm() {
               Istruzioni per i votanti (opzionale)
             </label>
             <textarea
-              placeholder="es. Valuta ogni esibizione da 1 a 10. La categoria Spupazzabile non conta nel totale!"
+              placeholder="es. Valuta ogni esibizione da 1 a 10..."
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
               rows={3}
@@ -304,8 +421,8 @@ export default function CreatePollForm() {
         </div>
       )}
 
-      {/* Step 2 */}
-      {step === 2 && (
+      {/* Step 2 — Rating */}
+      {step === 2 && pollType === 'rating' && (
         <div className="space-y-4">
           <h2 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
             Criteri di valutazione
@@ -321,7 +438,6 @@ export default function CreatePollForm() {
                 style={{ backgroundColor: 'var(--card-hover)', border: '1px solid var(--border)' }}
               >
                 <div className="flex items-center gap-2">
-                  {/* Emoji button */}
                   <div className="relative">
                     <button
                       onClick={() => setEmojiPickerOpen(emojiPickerOpen === i ? null : i)}
@@ -361,7 +477,6 @@ export default function CreatePollForm() {
                     <button
                       onClick={() => removeCriterion(i)}
                       className="rounded-lg p-2 transition-colors hover:bg-red-500/20 text-red-400"
-                      title="Rimuovi criterio"
                     >
                       🗑️
                     </button>
@@ -393,7 +508,6 @@ export default function CreatePollForm() {
                     />
                   </div>
                 </div>
-                {/* Exclude from total */}
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -414,6 +528,105 @@ export default function CreatePollForm() {
             style={{ border: '2px dashed var(--border)', color: 'var(--text-muted)' }}
           >
             + Aggiungi criterio
+          </button>
+        </div>
+      )}
+
+      {/* Step 2 — Single/Multi choice */}
+      {step === 2 && pollType !== 'rating' && (
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
+            Opzioni di scelta
+          </h2>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            Definisci le opzioni tra cui i votanti potranno scegliere per ogni elemento
+            {pollType === 'multi_choice' && ` (max ${maxChoices} scelte)`}
+          </p>
+
+          {/* Paste choices */}
+          {!showChoicePaste ? (
+            <button
+              onClick={() => setShowChoicePaste(true)}
+              className="w-full rounded-xl py-2.5 text-sm font-medium transition-all hover:scale-[1.01]"
+              style={{ border: '2px dashed var(--border)', color: 'var(--text-muted)' }}
+            >
+              📋 Incolla lista opzioni
+            </button>
+          ) : (
+            <div className="rounded-xl p-4 space-y-3"
+              style={{ backgroundColor: 'var(--card-hover)', border: '1px solid var(--border)' }}>
+              <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+                Incolla le opzioni — una per riga
+              </p>
+              <textarea
+                autoFocus
+                rows={5}
+                placeholder={'Ottimo\nBuono\nSufficiente\nInsufficiante'}
+                value={choicePasteText}
+                onChange={(e) => setChoicePasteText(e.target.value)}
+                className="w-full rounded-lg px-3 py-2.5 text-sm outline-none resize-none font-mono"
+                style={inputStyle}
+              />
+              {choicePasteText.trim() && (
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  {parsedChoicePreview.length} opzioni trovate
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowChoicePaste(false); setChoicePasteText(''); }}
+                  className="flex-1 rounded-lg py-2 text-sm font-medium"
+                  style={{ backgroundColor: 'var(--background)', color: 'var(--text-muted)' }}
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={confirmChoicePaste}
+                  disabled={parsedChoicePreview.length === 0}
+                  className="flex-1 rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-40"
+                  style={{ backgroundColor: 'var(--primary)' }}
+                >
+                  Aggiungi {parsedChoicePreview.length > 0 ? `${parsedChoicePreview.length} opzioni` : ''}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {choices.map((c, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+                style={{ backgroundColor: 'var(--card-hover)', border: '1px solid var(--border)' }}
+              >
+                <span className="text-xs w-5 text-center shrink-0" style={{ color: 'var(--text-muted)' }}>
+                  {i + 1}
+                </span>
+                <input
+                  type="text"
+                  placeholder={`Opzione ${i + 1} *`}
+                  value={c.name}
+                  onChange={(e) => updateChoice(i, e.target.value)}
+                  className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
+                  style={inputStyle}
+                />
+                {choices.length > 2 && (
+                  <button
+                    onClick={() => removeChoice(i)}
+                    className="rounded-lg p-2 transition-colors hover:bg-red-500/20 text-red-400"
+                  >
+                    🗑️
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={addChoice}
+            className="w-full rounded-xl py-3 text-sm font-medium transition-all hover:scale-[1.01]"
+            style={{ border: '2px dashed var(--border)', color: 'var(--text-muted)' }}
+          >
+            + Aggiungi opzione
           </button>
         </div>
       )}
@@ -449,7 +662,7 @@ export default function CreatePollForm() {
               <textarea
                 autoFocus
                 rows={6}
-                placeholder={'Achille Lauro - Incoscienti Giovani\nGiorgia - La mia voce\n1. Norvegia | Kyle Alessandro – Lighter'}
+                placeholder={'Achille Lauro - Incoscienti Giovani\nGiorgia - La mia voce'}
                 value={pasteText}
                 onChange={(e) => setPasteText(e.target.value)}
                 className="w-full rounded-lg px-3 py-2.5 text-sm outline-none resize-none font-mono"
@@ -502,18 +715,10 @@ export default function CreatePollForm() {
                 style={{ backgroundColor: 'var(--card-hover)', border: '1px solid var(--border)' }}
               >
                 <div className="flex flex-col gap-1">
-                  <button
-                    onClick={() => moveItem(i, -1)}
-                    disabled={i === 0}
-                    className="text-xs disabled:opacity-30"
-                    style={{ color: 'var(--text-muted)' }}
-                  >▲</button>
-                  <button
-                    onClick={() => moveItem(i, 1)}
-                    disabled={i === items.length - 1}
-                    className="text-xs disabled:opacity-30"
-                    style={{ color: 'var(--text-muted)' }}
-                  >▼</button>
+                  <button onClick={() => moveItem(i, -1)} disabled={i === 0}
+                    className="text-xs disabled:opacity-30" style={{ color: 'var(--text-muted)' }}>▲</button>
+                  <button onClick={() => moveItem(i, 1)} disabled={i === items.length - 1}
+                    className="text-xs disabled:opacity-30" style={{ color: 'var(--text-muted)' }}>▼</button>
                 </div>
                 <div className="flex-1 space-y-2">
                   <input
@@ -534,10 +739,8 @@ export default function CreatePollForm() {
                   />
                 </div>
                 {items.length > 2 && (
-                  <button
-                    onClick={() => removeItem(i)}
-                    className="rounded-lg p-2 transition-colors hover:bg-red-500/20 text-red-400"
-                  >
+                  <button onClick={() => removeItem(i)}
+                    className="rounded-lg p-2 transition-colors hover:bg-red-500/20 text-red-400">
                     🗑️
                   </button>
                 )}
@@ -565,27 +768,48 @@ export default function CreatePollForm() {
             <p className="text-lg font-bold" style={{ color: 'var(--text)' }}>{title}</p>
             {description && <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{description}</p>}
             <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Creato da: {creatorName}</p>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              Tipo: {POLL_TYPE_OPTIONS.find(o => o.value === pollType)?.label}
+              {pollType === 'multi_choice' && ` (max ${maxChoices} scelte)`}
+            </p>
           </div>
 
-          <div>
-            <h3 className="mb-2 font-semibold text-sm" style={{ color: 'var(--text-muted)' }}>
-              CRITERI ({criteria.length})
-            </h3>
-            <div className="space-y-1">
-              {criteria.map((c, i) => (
-                <div key={i} className="flex items-center justify-between rounded-lg px-3 py-2"
-                  style={{ backgroundColor: 'var(--card-hover)' }}>
-                  <span style={{ color: 'var(--text)' }}>
-                    {c.emoji && <span className="mr-1">{c.emoji}</span>}{c.name}
-                    {c.excludeFromTotal && <span className="ml-2 text-xs" style={{ color: 'var(--text-muted)' }}>(separata)</span>}
-                  </span>
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {c.minValue} – {c.maxValue}
-                  </span>
-                </div>
-              ))}
+          {pollType === 'rating' ? (
+            <div>
+              <h3 className="mb-2 font-semibold text-sm" style={{ color: 'var(--text-muted)' }}>
+                CRITERI ({criteria.length})
+              </h3>
+              <div className="space-y-1">
+                {criteria.map((c, i) => (
+                  <div key={i} className="flex items-center justify-between rounded-lg px-3 py-2"
+                    style={{ backgroundColor: 'var(--card-hover)' }}>
+                    <span style={{ color: 'var(--text)' }}>
+                      {c.emoji && <span className="mr-1">{c.emoji}</span>}{c.name}
+                      {c.excludeFromTotal && <span className="ml-2 text-xs" style={{ color: 'var(--text-muted)' }}>(separata)</span>}
+                    </span>
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {c.minValue} – {c.maxValue}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div>
+              <h3 className="mb-2 font-semibold text-sm" style={{ color: 'var(--text-muted)' }}>
+                OPZIONI ({choices.length})
+              </h3>
+              <div className="space-y-1">
+                {choices.map((c, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded-lg px-3 py-2"
+                    style={{ backgroundColor: 'var(--card-hover)' }}>
+                    <span className="text-xs w-5 text-center" style={{ color: 'var(--text-muted)' }}>{i + 1}</span>
+                    <span className="text-sm" style={{ color: 'var(--text)' }}>{c.name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <h3 className="mb-2 font-semibold text-sm" style={{ color: 'var(--text-muted)' }}>
@@ -618,7 +842,6 @@ export default function CreatePollForm() {
 
       {/* Navigation */}
       <div className="mt-8 space-y-2">
-        {/* Validation hint */}
         {step === 1 && hint1 && (
           <p className="text-center text-xs" style={{ color: 'var(--text-muted)' }}>{hint1}</p>
         )}
@@ -639,7 +862,6 @@ export default function CreatePollForm() {
               ← Indietro
             </button>
           )}
-
           {step < 4 ? (
             <button
               onClick={() => setStep((s) => s + 1)}
