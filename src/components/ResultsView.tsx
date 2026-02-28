@@ -6,13 +6,12 @@ import { useRealtimeVotes } from '@/hooks/useRealtimeVotes';
 import Leaderboard from './Leaderboard';
 import CriterionRanking from './CriterionRanking';
 import ChoiceResultsView from './ChoiceResultsView';
-import type { Poll, Criterion, Item, ItemScore, Vote, Choice } from '@/types';
+import type { Poll, Criterion, Item, ItemScore, Vote } from '@/types';
 
 interface Props {
   poll: Poll;
   criteria: Criterion[];
   items: Item[];
-  choices?: Choice[];
 }
 
 function calculateLeaderboard(
@@ -59,7 +58,7 @@ function calculateLeaderboard(
 
 type TabType = 'general' | string;
 
-export default function ResultsView({ poll, criteria, items, choices = [] }: Props) {
+export default function ResultsView({ poll, criteria, items }: Props) {
   const { votes, isLoading, isConnected, reconnect } = useRealtimeVotes(poll.id);
 
   // Delegare a ChoiceResultsView per sondaggi non-rating
@@ -68,7 +67,6 @@ export default function ResultsView({ poll, criteria, items, choices = [] }: Pro
       <ChoiceResultsView
         poll={poll}
         items={items}
-        choices={choices}
         votes={votes}
         isLoading={isLoading}
         isConnected={isConnected}

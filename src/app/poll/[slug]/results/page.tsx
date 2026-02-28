@@ -19,19 +19,17 @@ export default async function ResultsPage({ params }: Props) {
 
   if (!poll) notFound();
 
-  const [criteriaRes, itemsRes, choicesRes] = await Promise.all([
+  const [criteriaRes, itemsRes] = await Promise.all([
     supabase.from('criteria').select('*').eq('poll_id', poll.id).order('sort_order'),
     supabase.from('items').select('*').eq('poll_id', poll.id).order('sort_order'),
-    supabase.from('choices').select('*').eq('poll_id', poll.id).order('sort_order'),
   ]);
 
   const criteria = criteriaRes.data || [];
   const items = itemsRes.data || [];
-  const choices = choicesRes.data || [];
 
   return (
     <>
-      <ResultsView poll={poll} criteria={criteria} items={items} choices={choices} />
+      <ResultsView poll={poll} criteria={criteria} items={items} />
 
       {/* Bottom nav */}
       <div className="fixed bottom-0 left-0 right-0 p-4"

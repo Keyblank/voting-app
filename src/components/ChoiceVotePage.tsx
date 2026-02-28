@@ -3,66 +3,50 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import ProgressBar from '@/components/ProgressBar';
-import type { Poll, Item, Choice } from '@/types';
-
-type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+import type { Poll, Item } from '@/types';
 
 interface Props {
   poll: Poll;
   items: Item[];
-  choices: Choice[];
   slug: string;
   voterId: string | null;
   voterName: string | null;
-  selectedChoices: Record<string, string[]>; // item_id → choice_id[]
+  selectedItems: string[]; // item_id selezionati dal voter
   votedCount: number;
-  onVote: (itemId: string, choiceId: string, selected: boolean) => Promise<boolean>;
+  onSelect: (itemId: string) => Promise<boolean>;
 }
 
 export default function ChoiceVotePage({
   poll,
   items,
-  choices,
   slug,
-  voterId,
   voterName,
-  selectedChoices,
+  selectedItems,
   votedCount,
-  onVote,
+  onSelect,
 }: Props) {
-  // saveStatus: key = `${itemId}_${choiceId}`
-  const [saveStatus, setSaveStatus] = useState<Record<string, SaveStatus>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [errorId, setErrorId] = useState<string | null>(null);
 
   const isMulti = poll.poll_type === 'multi_choice';
   const maxChoices = poll.max_choices ?? 1;
+  const atLimit = isMulti && selectedItems.length >= maxChoices;
 
-  const getSelected = (itemId: string): string[] => selectedChoices[itemId] ?? [];
+  const handleClick = async (itemId: string) => {
+    if (savingId) return; // evita click multipli durante salvataggio
 
-  const handleToggle = async (itemId: string, choiceId: string) => {
-    if (!voterId) return;
+    const isSelected = selectedItems.includes(itemId);
+    // Per multi_choice: se non selezionato e al limite, blocca
+    if (isMulti && !isSelected && atLimit) return;
 
-    const selected = getSelected(itemId);
-    const isCurrentlySelected = selected.includes(choiceId);
+    setSavingId(itemId);
+    setErrorId(null);
 
-    // Multi: se non selezionato e già al limite, ignora
-    if (isMulti && !isCurrentlySelected && selected.length >= maxChoices) return;
+    const ok = await onSelect(itemId);
 
-    const key = `${itemId}_${choiceId}`;
-    setSaveStatus((prev) => ({ ...prev, [key]: 'saving' }));
-
-    const ok = await onVote(itemId, choiceId, !isCurrentlySelected);
-
-    setSaveStatus((prev) => ({ ...prev, [key]: ok ? 'saved' : 'error' }));
-    setTimeout(() => {
-      setSaveStatus((prev) => {
-        if (prev[key] === 'saved' || prev[key] === 'error') {
-          const next = { ...prev };
-          delete next[key];
-          return next;
-        }
-        return prev;
-      });
-    }, 1500);
+    setSavingId(null);
+    if (!ok) setErrorId(itemId);
+    else if (errorId === itemId) setErrorId(null);
   };
 
   return (
@@ -80,14 +64,37 @@ export default function ChoiceVotePage({
                 </p>
               )}
             </div>
+            {isMulti && (
+              <span
+                className="shrink-0 text-sm font-semibold tabular-nums px-2.5 py-1 rounded-full"
+                style={{
+                  backgroundColor: atLimit ? 'rgba(99,102,241,0.2)' : 'var(--card)',
+                  color: atLimit ? 'var(--primary-light)' : 'var(--text-muted)',
+                }}
+              >
+                {selectedItems.length}/{maxChoices}
+              </span>
+            )}
           </div>
-          <ProgressBar votedCount={votedCount} totalCount={items.length} />
+          <ProgressBar
+            votedCount={isMulti ? selectedItems.length : (selectedItems.length > 0 ? 1 : 0)}
+            totalCount={isMulti ? maxChoices : 1}
+          />
         </div>
       </div>
 
-      {/* Banner completamento */}
-      {votedCount === items.length && items.length > 0 && (
-        <div className="mx-auto max-w-xl px-4 pt-4">
+      {/* Istruzione contestuale */}
+      <div className="mx-auto max-w-xl px-4 pt-4">
+        <p className="text-sm text-center" style={{ color: 'var(--text-muted)' }}>
+          {isMulti
+            ? `Scegli fino a ${maxChoices} elementi`
+            : 'Scegli un elemento'}
+        </p>
+      </div>
+
+      {/* Banner completamento (solo multi) */}
+      {isMulti && atLimit && (
+        <div className="mx-auto max-w-xl px-4 pt-3">
           <div
             className="rounded-xl px-5 py-4 text-center"
             style={{
@@ -97,118 +104,75 @@ export default function ChoiceVotePage({
           >
             <p className="text-2xl mb-1">🎉</p>
             <p className="font-bold" style={{ color: 'var(--success)' }}>
-              Hai votato tutti i {items.length} {items.length === 1 ? 'elemento' : 'elementi'}!
+              Hai espresso tutte le {maxChoices} preferenze!
             </p>
             <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              Puoi cambiare i voti in qualsiasi momento
+              Puoi cambiare le tue scelte in qualsiasi momento
             </p>
           </div>
         </div>
       )}
 
-      {/* Item cards */}
-      <div className="mx-auto max-w-xl px-4 pt-4 space-y-3">
+      {/* Item list */}
+      <div className="mx-auto max-w-xl px-4 pt-3 space-y-2">
         {items.map((item) => {
-          const selected = getSelected(item.id);
-          const isVoted = selected.length > 0;
-          const atLimit = isMulti && selected.length >= maxChoices;
+          const isSelected = selectedItems.includes(item.id);
+          const isSaving = savingId === item.id;
+          const isError = errorId === item.id;
+          const isDisabled = !isSelected && isMulti && atLimit;
 
           return (
-            <div
+            <button
               key={item.id}
-              className="rounded-xl overflow-hidden"
+              onClick={() => handleClick(item.id)}
+              disabled={isDisabled || isSaving}
+              className="w-full rounded-xl text-left transition-all"
               style={{
-                backgroundColor: 'var(--card)',
-                border: `1px solid ${isVoted ? 'var(--primary)' : 'var(--border)'}`,
-                transition: 'border-color 0.2s',
+                backgroundColor: isSelected ? 'rgba(99,102,241,0.12)' : 'var(--card)',
+                border: `2px solid ${isSelected ? 'var(--primary)' : isError ? '#ef4444' : 'var(--border)'}`,
+                opacity: isDisabled ? 0.45 : 1,
+                cursor: isDisabled ? 'not-allowed' : 'pointer',
               }}
             >
-              {/* Item header */}
-              <div
-                className="flex items-center justify-between px-4 py-3"
-                style={{ borderBottom: '1px solid var(--border)' }}
-              >
-                <div className="min-w-0">
-                  <p className="font-semibold truncate" style={{ color: 'var(--text)' }}>
+              <div className="flex items-center gap-4 px-4 py-4">
+                {/* Indicatore selezione */}
+                <div
+                  className="shrink-0 flex items-center justify-center rounded-full transition-all"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    backgroundColor: isSelected ? 'var(--primary)' : 'var(--background)',
+                    border: `2px solid ${isSelected ? 'var(--primary)' : 'var(--border)'}`,
+                  }}
+                >
+                  {isSaving ? (
+                    <span className="text-xs animate-pulse" style={{ color: 'var(--text-muted)' }}>⋯</span>
+                  ) : isSelected ? (
+                    <span className="text-white text-sm">✓</span>
+                  ) : null}
+                </div>
+
+                {/* Testo elemento */}
+                <div className="flex-1 min-w-0">
+                  <p
+                    className="font-semibold truncate"
+                    style={{ color: isSelected ? 'var(--primary-light)' : isDisabled ? 'var(--text-muted)' : 'var(--text)' }}
+                  >
                     {item.name}
                   </p>
                   {item.subtitle && (
-                    <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                    <p className="text-sm truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
                       {item.subtitle}
                     </p>
                   )}
                 </div>
-                <div className="ml-3 shrink-0 flex items-center gap-2">
-                  {isMulti && (
-                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                      {selected.length}/{maxChoices}
-                    </span>
-                  )}
-                  <span
-                    className="text-sm font-bold"
-                    style={{ color: isVoted ? 'var(--success)' : 'var(--text-muted)' }}
-                  >
-                    {isVoted ? '✓' : '○'}
-                  </span>
-                </div>
-              </div>
 
-              {/* Choices */}
-              <div className="p-3 space-y-2">
-                {choices.map((choice) => {
-                  const isSelected = selected.includes(choice.id);
-                  const isDisabled = !isSelected && atLimit;
-                  const key = `${item.id}_${choice.id}`;
-                  const status = saveStatus[key] ?? 'idle';
-
-                  return (
-                    <button
-                      key={choice.id}
-                      onClick={() => handleToggle(item.id, choice.id)}
-                      disabled={isDisabled || status === 'saving'}
-                      className="w-full flex items-center justify-between rounded-lg px-4 py-3 text-left transition-all"
-                      style={{
-                        backgroundColor: isSelected
-                          ? 'rgba(99,102,241,0.18)'
-                          : isDisabled
-                          ? 'rgba(255,255,255,0.03)'
-                          : 'var(--background)',
-                        border: `1.5px solid ${
-                          isSelected
-                            ? 'var(--primary)'
-                            : isDisabled
-                            ? 'var(--border)'
-                            : 'var(--border)'
-                        }`,
-                        opacity: isDisabled ? 0.45 : 1,
-                        cursor: isDisabled ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      <span
-                        className="text-sm font-medium"
-                        style={{ color: isSelected ? 'var(--primary-light)' : isDisabled ? 'var(--text-muted)' : 'var(--text)' }}
-                      >
-                        {choice.name}
-                      </span>
-                      <span className="ml-3 shrink-0 text-sm">
-                        {status === 'saving' && (
-                          <span style={{ color: 'var(--text-muted)' }}>⋯</span>
-                        )}
-                        {status === 'saved' && (
-                          <span style={{ color: 'var(--success)' }}>✓</span>
-                        )}
-                        {status === 'error' && (
-                          <span style={{ color: 'var(--error, #ef4444)' }}>⚠</span>
-                        )}
-                        {status === 'idle' && isSelected && (
-                          <span style={{ color: 'var(--primary)' }}>●</span>
-                        )}
-                      </span>
-                    </button>
-                  );
-                })}
+                {/* Feedback errore */}
+                {isError && (
+                  <span className="shrink-0 text-sm" style={{ color: '#ef4444' }}>⚠</span>
+                )}
               </div>
-            </div>
+            </button>
           );
         })}
       </div>

@@ -11,13 +11,6 @@ export interface Poll {
   max_choices: number;
 }
 
-export interface Choice {
-  id: string;
-  poll_id: string;
-  name: string;
-  sort_order: number;
-}
-
 export interface Criterion {
   id: string;
   poll_id: string;

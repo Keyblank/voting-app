@@ -2,12 +2,11 @@
 
 import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { Poll, Item, Choice, Vote } from '@/types';
+import type { Poll, Item, Vote } from '@/types';
 
 interface Props {
   poll: Poll;
   items: Item[];
-  choices: Choice[];
   votes: Vote[];
   isLoading: boolean;
   isConnected: boolean;
@@ -17,7 +16,6 @@ interface Props {
 export default function ChoiceResultsView({
   poll,
   items,
-  choices,
   votes,
   isLoading,
   isConnected,
@@ -28,23 +26,17 @@ export default function ChoiceResultsView({
     [votes]
   );
 
-  // Per ogni item: count per scelta, ordinati per count desc
+  // Per ogni item: count voti diretti, ordinati per count desc
   const itemStats = useMemo(() => {
-    return items.map((item) => {
-      const itemVotes = votes.filter((v) => v.item_id === item.id);
-      const totalVotes = itemVotes.length;
+    return items
+      .map((item) => {
+        const count = votes.filter((v) => v.item_id === item.id).length;
+        return { item, count };
+      })
+      .sort((a, b) => b.count - a.count);
+  }, [items, votes]);
 
-      const choiceStats = choices.map((choice) => {
-        const count = itemVotes.filter((v) => v.choice_id === choice.id).length;
-        return { choice, count, pct: totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0 };
-      }).sort((a, b) => b.count - a.count);
-
-      const topCount = choiceStats[0]?.count ?? 0;
-
-      return { item, choiceStats, totalVotes, topCount };
-    }).sort((a, b) => b.topCount - a.topCount);
-  }, [items, choices, votes]);
-
+  const maxCount = itemStats[0]?.count ?? 0;
   const medals = ['🥇', '🥈', '🥉'];
 
   return (
@@ -58,7 +50,9 @@ export default function ChoiceResultsView({
                 {poll.title}
               </h1>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                {poll.poll_type === 'single_choice' ? 'Scelta singola' : `Scelta multipla (max ${poll.max_choices})`}
+                {poll.poll_type === 'single_choice'
+                  ? 'Scelta singola'
+                  : `Scelta multipla (max ${poll.max_choices} preferenze)`}
               </p>
             </div>
             {/* Live / Offline badge */}
@@ -87,15 +81,17 @@ export default function ChoiceResultsView({
           <div className="mt-3 flex gap-3">
             <div className="flex-1 rounded-lg px-3 py-2 text-center" style={{ backgroundColor: 'var(--card)' }}>
               <p className="text-lg font-bold" style={{ color: 'var(--text)' }}>{uniqueVoters}</p>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>partecipanti</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>votanti</p>
             </div>
             <div className="flex-1 rounded-lg px-3 py-2 text-center" style={{ backgroundColor: 'var(--card)' }}>
               <p className="text-lg font-bold" style={{ color: 'var(--text)' }}>{votes.length}</p>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>scelte totali</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>preferenze</p>
             </div>
             <div className="flex-1 rounded-lg px-3 py-2 text-center" style={{ backgroundColor: 'var(--card)' }}>
-              <p className="text-lg font-bold" style={{ color: 'var(--primary-light)' }}>{choices.length}</p>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>opzioni</p>
+              <p className="text-lg font-bold truncate" style={{ color: 'var(--primary-light)' }}>
+                {itemStats[0]?.count > 0 ? itemStats[0].item.name.split(' ')[0] : '—'}
+              </p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>in testa</p>
             </div>
           </div>
         </div>
@@ -138,72 +134,64 @@ export default function ChoiceResultsView({
             />
           </div>
         ) : (
-          <div className="pt-4 space-y-3">
+          <div className="pt-4 space-y-2">
             {itemStats.length === 0 && (
               <div className="rounded-xl p-8 text-center" style={{ backgroundColor: 'var(--card)' }}>
                 <p className="text-4xl mb-3">⏳</p>
-                <p style={{ color: 'var(--text-muted)' }}>Nessun voto ancora. Sii il primo a votare!</p>
+                <p style={{ color: 'var(--text-muted)' }}>Nessun voto ancora. Sii il primo!</p>
               </div>
             )}
-            {itemStats.map(({ item, choiceStats, totalVotes }, index) => (
-              <motion.div
-                key={item.id}
-                layout
-                layoutId={`choice-item-${item.id}`}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25 }}
-                className="rounded-xl overflow-hidden"
-                style={{ backgroundColor: 'var(--card)', border: '1px solid var(--border)' }}
-              >
-                {/* Item header */}
-                <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
-                  <span className="text-lg w-7 text-center shrink-0">
-                    {index < 3
-                      ? medals[index]
-                      : <span className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>#{index + 1}</span>}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold truncate" style={{ color: 'var(--text)' }}>{item.name}</p>
-                    {item.subtitle && (
-                      <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{item.subtitle}</p>
-                    )}
-                  </div>
-                  <span className="text-xs shrink-0" style={{ color: 'var(--text-muted)' }}>
-                    {totalVotes} {totalVotes === 1 ? 'scelta' : 'scelte'}
-                  </span>
-                </div>
+            {itemStats.map(({ item, count }, index) => {
+              const pct = uniqueVoters > 0 ? Math.round((count / uniqueVoters) * 100) : 0;
+              const isLeader = index === 0 && count > 0;
 
-                {/* Barre per ogni opzione */}
-                <div className="px-4 py-3 space-y-2">
-                  {choiceStats.map(({ choice, count, pct }, ci) => (
-                    <div key={choice.id}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium truncate" style={{ color: 'var(--text)' }}>
-                          {choice.name}
-                        </span>
-                        <span className="text-xs ml-2 shrink-0 tabular-nums" style={{ color: 'var(--text-muted)' }}>
-                          {count} ({pct}%)
-                        </span>
-                      </div>
-                      <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--border)' }}>
-                        <motion.div
-                          className="h-full rounded-full score-bar"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${pct}%` }}
-                          transition={{ duration: 0.5, ease: 'easeOut' }}
-                          style={{
-                            background: ci === 0 && count > 0
-                              ? 'linear-gradient(to right, var(--primary), var(--primary-light))'
-                              : 'var(--secondary)',
-                          }}
-                        />
-                      </div>
+              return (
+                <motion.div
+                  key={item.id}
+                  layout
+                  layoutId={`choice-item-${item.id}`}
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25 }}
+                  className="rounded-xl px-4 py-3"
+                  style={{
+                    backgroundColor: 'var(--card)',
+                    border: `1px solid ${isLeader ? 'rgba(99,102,241,0.4)' : 'var(--border)'}`,
+                  }}
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-lg w-7 text-center shrink-0">
+                      {index < 3
+                        ? medals[index]
+                        : <span className="text-xs font-bold" style={{ color: 'var(--text-muted)' }}>#{index + 1}</span>}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold truncate" style={{ color: 'var(--text)' }}>{item.name}</p>
+                      {item.subtitle && (
+                        <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{item.subtitle}</p>
+                      )}
                     </div>
-                  ))}
-                </div>
-              </motion.div>
-            ))}
+                    <span className="text-sm font-bold shrink-0 tabular-nums" style={{ color: isLeader ? 'var(--primary-light)' : 'var(--text-muted)' }}>
+                      {count} <span className="text-xs font-normal">({pct}%)</span>
+                    </span>
+                  </div>
+                  {/* Barra */}
+                  <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--border)' }}>
+                    <motion.div
+                      className="h-full rounded-full"
+                      initial={{ width: 0 }}
+                      animate={{ width: maxCount > 0 ? `${(count / maxCount) * 100}%` : '0%' }}
+                      transition={{ duration: 0.5, ease: 'easeOut' }}
+                      style={{
+                        background: isLeader
+                          ? 'linear-gradient(to right, var(--primary), var(--primary-light))'
+                          : 'var(--secondary)',
+                      }}
+                    />
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
         )}
       </div>
