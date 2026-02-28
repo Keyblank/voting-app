@@ -65,13 +65,14 @@ export default function VoteSlider({
       </div>
 
       {/* Bottoni numerici (range ≤ 15) */}
-      {!useSlider && (
-        <div
-          className="grid gap-1.5"
-          style={{ gridTemplateColumns: `repeat(${Math.min(range, 5)}, 1fr)` }}
-        >
-          {values.map((v) => {
-            const vPct = maxValue > minValue ? (v - minValue) / (maxValue - minValue) : 0;
+      {!useSlider && (() => {
+        // Griglia 6+5 per range esatto 0-10 (11 valori)
+        const is0to10 = minValue === 0 && maxValue === 10;
+        if (is0to10) {
+          const row1 = [0, 1, 2, 3, 4, 5];
+          const row2 = [6, 7, 8, 9, 10];
+          const renderBtn = (v: number) => {
+            const vPct = (v - minValue) / (maxValue - minValue);
             const vHue = Math.round(vPct * 120);
             const isSelected = v === currentValue;
             return (
@@ -84,25 +85,70 @@ export default function VoteSlider({
                   width: '100%',
                   aspectRatio: '1',
                   borderRadius: '50%',
-                  backgroundColor: isSelected
-                    ? `hsl(${vHue}, 65%, 38%)`
-                    : 'var(--card-hover)',
+                  backgroundColor: isSelected ? `hsl(${vHue}, 65%, 38%)` : 'var(--card-hover)',
                   color: isSelected ? '#fff' : 'var(--text-muted)',
-                  border: isSelected
-                    ? `2px solid hsl(${vHue}, 65%, 52%)`
-                    : '2px solid var(--border)',
-                  boxShadow: isSelected
-                    ? `0 0 12px hsl(${vHue}, 65%, 30%)`
-                    : 'none',
+                  border: isSelected ? `2px solid hsl(${vHue}, 65%, 52%)` : '2px solid var(--border)',
+                  boxShadow: isSelected ? `0 0 12px hsl(${vHue}, 65%, 30%)` : 'none',
                   transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
                 }}
               >
                 {v}
               </motion.button>
             );
-          })}
-        </div>
-      )}
+          };
+          return (
+            <div className="space-y-1.5">
+              <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+                {row1.map(renderBtn)}
+              </div>
+              <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+                <div /> {/* spacer per centrare 6-10 */}
+                {row2.map(renderBtn)}
+              </div>
+            </div>
+          );
+        }
+
+        // Griglia generica (fino a 5 colonne)
+        return (
+          <div
+            className="grid gap-1.5"
+            style={{ gridTemplateColumns: `repeat(${Math.min(range, 5)}, 1fr)` }}
+          >
+            {values.map((v) => {
+              const vPct = maxValue > minValue ? (v - minValue) / (maxValue - minValue) : 0;
+              const vHue = Math.round(vPct * 120);
+              const isSelected = v === currentValue;
+              return (
+                <motion.button
+                  key={v}
+                  onClick={() => onValueChange(v)}
+                  whileTap={{ scale: 0.85 }}
+                  className="flex items-center justify-center text-sm font-bold"
+                  style={{
+                    width: '100%',
+                    aspectRatio: '1',
+                    borderRadius: '50%',
+                    backgroundColor: isSelected
+                      ? `hsl(${vHue}, 65%, 38%)`
+                      : 'var(--card-hover)',
+                    color: isSelected ? '#fff' : 'var(--text-muted)',
+                    border: isSelected
+                      ? `2px solid hsl(${vHue}, 65%, 52%)`
+                      : '2px solid var(--border)',
+                    boxShadow: isSelected
+                      ? `0 0 12px hsl(${vHue}, 65%, 30%)`
+                      : 'none',
+                    transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
+                  }}
+                >
+                  {v}
+                </motion.button>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Slider fallback (range > 15) */}
       {useSlider && (

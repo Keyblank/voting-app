@@ -91,6 +91,33 @@ export default function VoteCard({ item, criteria, isVoted, getVoteValue, onVote
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {/* Punteggio parziale: media normalizzata dei criteri inclusi nel totale già votati */}
+          {(() => {
+            const includedCriteria = criteria.filter((c) => !c.exclude_from_total);
+            const votedIncluded = includedCriteria.filter(
+              (c) => localValues[c.id] !== undefined
+            );
+            if (votedIncluded.length === 0) return null;
+            // Media delle percentuali normalizzate per il colore (funziona con range diversi)
+            const normalizedSum = votedIncluded.reduce((sum, c) => {
+              const range = c.max_value - c.min_value;
+              return sum + (range > 0 ? (localValues[c.id] - c.min_value) / range : 0.5);
+            }, 0);
+            const hue = Math.round((normalizedSum / votedIncluded.length) * 120);
+            // Media grezza per il numero mostrato
+            const avg =
+              votedIncluded.reduce((sum, c) => sum + localValues[c.id], 0) /
+              votedIncluded.length;
+            const roundedAvg = Math.round(avg * 10) / 10;
+            return (
+              <span
+                className="text-sm font-bold tabular-nums"
+                style={{ color: `hsl(${hue}, 65%, 55%)` }}
+              >
+                {roundedAvg}
+              </span>
+            );
+          })()}
           <span
             className="rounded-full px-2.5 py-0.5 text-xs font-medium"
             style={{
